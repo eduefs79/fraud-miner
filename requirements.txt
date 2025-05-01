@@ -1,0 +1,15 @@
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+scikit-learn
+requests
+faker
+geoip2
+pyspark
+sqlalchemy
+psycopg2-binary
+snowflake-connector-python
+awscli
+boto3

@@ -1,0 +1,7 @@
+/data
+/logs
+/postgres
+/dags/.ipynb_checkpoints
+/dags/__pycache__
+/dags/scripts/.ipynb_checkpoints
+/notebooks/.ipynb_checkpoints
