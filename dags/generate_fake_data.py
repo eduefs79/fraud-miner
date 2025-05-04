@@ -9,22 +9,33 @@ with DAG('generate_fake_data',
 
     task_customers = BashOperator(
         task_id='generate_customers',
-        bash_command='python3 /opt/airflow/dags/scripts/customers.py'
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/customers.py'
     )
 
     task_credit_cards = BashOperator(
         task_id='generate_credit_cards',
-        bash_command='python3 /opt/airflow/dags/scripts/credit_cards.py'
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/credit_cards.py'
     )
 
     task_merchants = BashOperator(
         task_id='generate_merchants',
-        bash_command='python3 /opt/airflow/dags/scripts/merchants.py'
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/merchants.py'
     )
 
-    task_transactions = BashOperator(
-        task_id='generate_transactions',
-        bash_command='python3 /opt/airflow/dags/scripts/transactions.py'
+    # 3 parallel transaction generators
+    task_transactions_jan = BashOperator(
+        task_id='generate_transactions_jan',
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/transactions.py --start 2025-01-01 --end 2025-01-31 --n 1000000'
     )
 
-    task_customers >> task_credit_cards >> task_merchants >> task_transactions
+    task_transactions_feb = BashOperator(
+        task_id='generate_transactions_feb',
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/transactions.py --start 2025-02-01 --end 2025-02-28 --n 1000000'
+    )
+
+    task_transactions_mar = BashOperator(
+        task_id='generate_transactions_mar',
+        bash_command='python3 /opt/airflow/dags/scripts/dataload/transactions.py --start 2025-03-01 --end 2025-03-31 --n 1000000'
+    )
+
+    task_customers >> task_credit_cards >> task_merchants >> [task_transactions_jan, task_transactions_feb, task_transactions_mar]
