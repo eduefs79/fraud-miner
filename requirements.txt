@@ -14,3 +14,7 @@ snowflake-connector-python
 awscli
 boto3
 apache-airflow-providers-databricks
+pyspark
+pyarrow
+s3fs
+databricks-sql-connector
