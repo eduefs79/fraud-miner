@@ -1,8 +1,59 @@
+
+# -----------------------------------------
+# 🛡️ GitIgnore for Airflow + ML + Notebooks
+# -----------------------------------------
+
+# Airflow metadata, logs, secrets
 /data
 /logs
 /postgres
+airflow.db
+airflow.cfg
+unittests.cfg
+secrets/
+config/secrets/
+
+# Python cache, compiled files, and virtual environments
+__pycache__/
+*.py[cod]
+*.so
+*.pkl
+*.joblib
+*.db
+*.egg-info/
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter & Databricks notebooks
+*.ipynb_checkpoints
+/notebooks/.ipynb_checkpoints
 /dags/.ipynb_checkpoints
 /dags/__pycache__
 /dags/scripts/.ipynb_checkpoints
-/notebooks/.ipynb_checkpoints
 /dags/scripts/datavault/.ipynb_checkpoints
+
+# Env files & credentials
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.crt
+*credentials*.json
+*aws*key*.json
+
+# OS or IDE metadata
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.log
+
+# VSCode or PyCharm
+.vscode/
+.idea/
+
+# AWS CLI default output
+.aws/
