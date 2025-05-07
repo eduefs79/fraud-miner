@@ -32,6 +32,7 @@ def generate_transactions(start_date, end_date, n_transactions=300000, output_ba
         transaction_date = fake.date_time_between(start_date=start_date, end_date=end_date)
         date_str = transaction_date.strftime('%Y-%m-%d')
 
+        is_online = np.random.rand() > 0.30  # 70% online, 30% in-store
         transaction = {
             'transaction_id': str(uuid.uuid4()),
             'card_id': card['card_id'],
@@ -40,9 +41,13 @@ def generate_transactions(start_date, end_date, n_transactions=300000, output_ba
             'amount': round(random.uniform(1.00, 1000.00), 2),
             'currency': 'USD',
             'timestamp': transaction_date.isoformat(),
-            'ip_address': fake.ipv4_public(),
             'is_fraud': np.random.choice([0, 1], p=[0.985, 0.015])
         }
+    
+        if is_online:
+            transaction['ip_address'] = fake.ipv4_public()
+        else:
+            transaction['ip_address'] = None  # or omit entirely
 
         transactions_by_day.setdefault(date_str, []).append(transaction)
 

@@ -39,6 +39,8 @@ def process_transaction_to_silver(aws_conn_id):
 
     # Parse timestamp as datetime
     df_all['timestamp'] = pd.to_datetime(df_all['timestamp'])
+    df_all['HK_CREDIT_CARD'] = df_all['card_id'].apply(lambda x: hash_key(x))
+    df_all['HK_MERCHANT'] = df_all['merchant_id'].apply(lambda x: hash_key(x))
 
     # Link key
     df_all['HK_LINK_TRANSACTION'] = df_all.apply(
@@ -53,8 +55,8 @@ def process_transaction_to_silver(aws_conn_id):
         if pd.api.types.is_datetime64_any_dtype(df_all[col]):
             df_all[col] = df_all[col].astype('datetime64[us]')
 
-    df_link = df_all[['HK_LINK_TRANSACTION', 'card_id', 'merchant_id', 'timestamp', 'LOAD_DATE', 'RECORD_SOURCE']].drop_duplicates()
-    df_sat = df_all[['HK_LINK_TRANSACTION', 'amount', 'currency', 'ip_address', 'is_fraud', 'LOAD_DATE', 'RECORD_SOURCE']]
+    df_link = df_all[['HK_LINK_TRANSACTION', 'HK_CREDIT_CARD', 'HK_MERCHANT']].drop_duplicates()
+    df_sat = df_all[['HK_LINK_TRANSACTION','timestamp', 'amount', 'currency', 'ip_address', 'is_fraud', 'LOAD_DATE', 'RECORD_SOURCE']]
 
     upload_df_to_s3(df_link, bucket, 'silver/link/LINK_TRANSACTION.parquet', aws_conn_id)
     upload_df_to_s3(df_sat, bucket, 'silver/sat/SAT_TRANSACTION.parquet', aws_conn_id)
@@ -91,37 +93,37 @@ def register_transaction_tables():
     """)
 
 
-    cursor.execute("""
-    CREATE OR REPLACE VIEW fraud_miner.silver.fraud_flat_view AS
-    SELECT
-      tlink.HK_LINK_TRANSACTION,
-      tlink.card_id,
-      csat.name AS customer_name,
-      csat.email,
-      csat.birth_date,
-      csat.address AS customer_address,
-      ccsat.card_number,
-      ccsat.card_provider,
-      ccsat.credit_limit,
-      msat.merchant_name,
-      msat.category AS merchant_category,
-      msat.city AS merchant_city,
-      msat.country AS merchant_country,
-      tsat.amount,
-      tsat.currency,
-      tsat.ip_address,
-      tlink.timestamp,
-      tsat.is_fraud
-    FROM fraud_miner.silver.rdv_link_transaction tlink
-    LEFT JOIN fraud_miner.silver.rdv_sat_transaction tsat
-      ON tlink.HK_LINK_TRANSACTION = tsat.HK_LINK_TRANSACTION
-    LEFT JOIN fraud_miner.silver.rdv_sat_credit_card ccsat
-      ON tlink.card_id = ccsat.HK_CREDIT_CARD
-    LEFT JOIN fraud_miner.silver.rdv_sat_customer csat
-      ON ccsat.customer_id = csat.HK_CUSTOMER
-    LEFT JOIN fraud_miner.silver.rdv_sat_merchant msat
-      ON tlink.merchant_id = msat.HK_MERCHANT
-    """)
+    # cursor.execute("""
+    # CREATE OR REPLACE VIEW fraud_miner.silver.fraud_flat_view AS
+    # SELECT
+    #   tlink.HK_LINK_TRANSACTION,
+    #   tlink.card_id,
+    #   csat.name AS customer_name,
+    #   csat.email,
+    #   csat.birth_date,
+    #   csat.address AS customer_address,
+    #   ccsat.card_number,
+    #   ccsat.card_provider,
+    #   ccsat.credit_limit,
+    #   msat.merchant_name,
+    #   msat.category AS merchant_category,
+    #   msat.city AS merchant_city,
+    #   msat.country AS merchant_country,
+    #   tsat.amount,
+    #   tsat.currency,
+    #   tsat.ip_address,
+    #   tlink.timestamp,
+    #   tsat.is_fraud
+    # FROM fraud_miner.silver.rdv_link_transaction tlink
+    # LEFT JOIN fraud_miner.silver.rdv_sat_transaction tsat
+    #   ON tlink.HK_LINK_TRANSACTION = tsat.HK_LINK_TRANSACTION
+    # LEFT JOIN fraud_miner.silver.rdv_sat_credit_card ccsat
+    #   ON tlink.card_id = ccsat.HK_CREDIT_CARD
+    # LEFT JOIN fraud_miner.silver.rdv_sat_customer csat
+    #   ON ccsat.customer_id = csat.HK_CUSTOMER
+    # LEFT JOIN fraud_miner.silver.rdv_sat_merchant msat
+    #   ON tlink.merchant_id = msat.HK_MERCHANT
+    # """)
 
     cursor.close()
     connection.close()

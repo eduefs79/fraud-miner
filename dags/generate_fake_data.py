@@ -175,7 +175,7 @@ with DAG('full_fraud_pipeline_to_s3',
         op_kwargs={
             'start_date_str': '2025-01-01',
             'end_date_str': '2025-01-31',
-            'n_transactions': 1000000,
+            'n_transactions': 2000000,
             'aws_conn_id': aws_conn
         }
     )
@@ -186,7 +186,7 @@ with DAG('full_fraud_pipeline_to_s3',
         op_kwargs={
             'start_date_str': '2025-02-01',
             'end_date_str': '2025-02-28',
-            'n_transactions': 1000000,
+            'n_transactions': 2000000,
             'aws_conn_id': aws_conn
         }
     )
@@ -197,7 +197,7 @@ with DAG('full_fraud_pipeline_to_s3',
         op_kwargs={
             'start_date_str': '2025-03-01',
             'end_date_str': '2025-03-31',
-            'n_transactions': 1000000,
+            'n_transactions': 2000000,
             'aws_conn_id': aws_conn
         }
     )

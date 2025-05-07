@@ -1,3 +1,5 @@
+version: "3"
+
 services:
   postgres:
     image: postgres:13
@@ -8,14 +10,22 @@ services:
     volumes:
       - ./postgres:/var/lib/postgresql/data
 
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
   airflow-webserver:
     image: airflowfraudminer:latest
     restart: always
     depends_on:
       - postgres
+      - redis
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
       AIRFLOW__WEBSERVER__SECRET_KEY: your_secret_key
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
@@ -25,8 +35,8 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
-      - ./data:/data        
-    command: bash -c "airflow db init && airflow webserver"
+      - ./data:/data
+    command: bash -c "airflow db upgrade && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin && airflow webserver"
 
   airflow-scheduler:
     image: airflowfraudminer:latest
@@ -34,14 +44,47 @@ services:
     depends_on:
       - airflow-webserver
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/data
     command: scheduler
+
+  airflow-worker:
+    image: airflowfraudminer:latest
+    restart: always
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data:/data
+    command: celery worker
+
+  flower:
+    image: airflowfraudminer:latest
+    restart: always
+    depends_on:
+      - redis
+    ports:
+      - "5555:5555"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+    command: celery flower
 
   jupyter:
     image: fraudminer:latest
@@ -51,7 +94,7 @@ services:
     volumes:
       - ./data:/home/jovyan/data
       - ./notebooks:/home/jovyan/work
-      - ./dags:/home/jovyan/dags         
+      - ./dags:/home/jovyan/dags
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=
