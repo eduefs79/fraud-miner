@@ -11,7 +11,7 @@ import os
 # Config
 DB_CATALOG = "fraud_miner"
 SOURCE_VIEW = f"{DB_CATALOG}.silver.rdv_sat_transaction"
-S3_PARQUET_KEY = "silver/rdv_sat/enriched_geo.parquet"
+S3_PARQUET_KEY = "silver/sat/enriched_geo.parquet"
 GEOIP_S3_KEY = "geoip/db/GeoLite2-City.mmdb"
 GEOIP_S3_BUCKET = "fraud-miner"
 LOCAL_GEOIP_PATH = "/tmp/GeoLite2-City.mmdb"
