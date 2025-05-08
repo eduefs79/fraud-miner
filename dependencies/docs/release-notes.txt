@@ -1,0 +1,318 @@
+============================================================================== 
+Simba Apache Spark ODBC Data Connector Release Notes 
+==============================================================================
+
+The release notes provide details of enhancements, features, known issues, and
+workflow changes in Simba Apache Spark ODBC Connector 2.9.1, as well as the 
+version history. 
+
+
+2.9.1 ========================================================================
+
+Released 2024-11-15
+
+Enhancements & New Features 
+
+ * [SPARKO-1383] Updated Thrift Version for HTTP User-Agent Header
+
+   The HTTP User-Agent used by the driver has been updated from thrift/0.9.0 
+   to thrift/0.17.0.
+
+
+ * [SPARKO-1005] Driver-Side Timeouts for Idle Statements
+   
+   Added support for configuring the fetch result idle timeout. For more 
+   information, see the Installation and Configuration Guide.
+
+
+ * [SPARKO-1266] Upgrade Arrow
+
+   Apache Arrow has been upgraded to version 15.0.0 across all non-Windows 
+   platforms.
+
+
+ * [SPARKO-1351][SPARKO-1387] Updated third-party libraries
+
+   The connector now uses the following third-party libraries:
+   - OpenSSL 3.0.15 (previously 3.0.13)
+   - libcURL 8.10.1 (previously 8.7.1)
+   - ICU 74.2 (previously 71.1)
+   - Arrow 15.0.0 (previously 9.0.0) for OSX & Linux (Windows was on 15.0.0)
+   - lz4 1.10.0. (previously 1.9.4)
+   - Expat 2.6.3 (previously 2.6.2)
+   - Kerberos 1.21.3 (previously 1.21.2)
+
+
+ * [SPARKO-1360] Support for Token Passthrough OAuth
+
+   The driver now supports token renewal for the Token Passthrough OAuth flow.
+
+ * [SPARKO-1369] Use 'hive_metastore' as default for Empty Initial Catalog
+
+   If the server sends an empty string as the initial catalog, the driver will 
+   default to using the "hive_metastore" catalog.
+
+
+ * [SPARKO-1371] Support for DBR
+
+   The driver now supports DBR 15.4 LTS. 
+
+
+* [SPARKO-1378] Buffer length based on the DM's encoding.
+
+   The driver now returns the buffer length based on the DM's encoding.
+
+ 
+Resolved Issues
+The following issues has been resolved in Simba Apache Spark ODBC Connector 
+2.9.1.
+
+ * [SPARKO-1149] When the driver encounters an error while sending heartbeat, 
+   it now re-attempts the heartbeat once before closing the heartbeat thread.
+
+ * [SPARKO-1376]  HttpPath property missing issue when setting up DSN through 
+   Add-OdbcDsn in PowerShell has been fixed.
+
+
+
+Workflow Changes =============================================================
+
+The following changes may disrupt established workflows for the connector. 
+
+
+2.9.1 ---------------------------------------------------------------------
+
+ * [SPARKO-1401] Dropped support for earlier versions of Linux 
+   distributions
+
+   The connector no longer supports the following versions of Linux 
+   distributions: 
+   - CentOS 7
+   - RHEL 7 
+   - SLES 12
+
+   For a list of supported Linux versions, see the Installation and 
+   Configuration Guide.
+
+
+2.8.0 ------------------------------------------------------------------------
+
+
+ * [SPARKO-1167] Updated OAuth client ID value
+   
+   For the OAuth browser based authentication, the default value of the Client
+   ID property is now "96eecda7-19ea-49cc-abb5-240097d554f5". Previously, the 
+   default value was "5e5b7d2b-32b1-4ac0-be5d-ad3ad710fa6e".
+
+ * [SPARKO-1155] Removed libcURL folder
+
+   Beginning with this release, on Windows, lib\LibCurl64.DllA (for the 64-bit
+   driver) and lib\LibCurl32.DllA (for the 32-bit driver) folders have
+   been removed.
+
+
+Version History ==============================================================
+
+2.8.2 ------------------------------------------------------------------------
+
+Released 2024-05-31
+  
+Enhancements & New Features
+
+ * [SPARKO-1204][SPARKO-1243][SPARKO-1279] Updated authentication support
+
+   The connector now supports Browser Based (U2M) and Client Credentials (M2)
+   authentication on GCP cloud. 
+   
+   On AWS, Azure, and GCP these are the new default values:
+   - Authorization endpoint: hostname + "/oidc/oauth2/v2.0/authorize"
+   - Token endpoint: hostname+"/oidc/oauth2/v2.0/token"
+   - Client ID (U2M): databricks-sql-odbc
+   - Scope (U2M): sql offline_access
+   - Scope (M2M): sql
+
+   On Azure, if the application specifies a client ID that is different from 
+   the default value, the default scope is:
+   - For U2M: 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/user_impersonation, offline_access
+   - For M2M: 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default
+
+   You can now configure the OAuth redirect port. To do this, set the 
+   OAuth2RedirectUrlPort property to your port. For more information, see the 
+   Installation and Configuration Guide.
+
+ * [SPARKO-1302] Updated support for Linux distributions
+   
+   The connector now supports the following operating systems:
+   - Debian 11
+   - Ubuntu 24.04 
+
+   For a list of supported Linux versions, see the Installation and 
+   Configuration Guide.
+
+
+Known Issues 
+The following are known issues that you may encounter due to limitations in 
+the data source, the connector, or an application.
+
+ * [SPARKO-1101] When the Auth_AccessToken line length is longer than the 
+   maximum limit of 1000, the connector returns an authentication error. For
+   more information, see the Installation and Configuration Guide.
+
+ * [SPARKO-879] When connecting to a server that supports multiple catalogs, 
+   the connector no longer reports the catalog for schemas and tables as
+   SPARK.
+  
+   The Spark server now reports the catalog. 
+
+ * [SPARKO-670] In some cases, when retrieving timestamp data, the connector 
+   returns an error.
+ 
+   In some cases, when connecting to certain distributions of 
+   Apache Spark, the connector returns the following error: "Conversion from
+   number to string failed due to undersized character buffer". This issue 
+   affects versions 2.6.12 to 2.6.14 of the Spark ODBC connector. 
+   
+   As a workaround, set EnableArrow=0 in the connection string or DSN. 
+
+ * [SPARKO-620] Issue with date and timestamp before the beginning of the 
+   Gregorian calendar when connecting to Spark 2.4.4 or later, or versions 
+   previous to 3.0, with Arrow result set serialization.
+ 
+   When using Spark 2.4.4 or later, or versions previous to Spark 3.0, DATE 
+   and TIMESTAMP data before October 15, 1582 may be returned incorrectly if 
+   the server supports serializing query results using Apache Arrow. This 
+   issue should not impact most distributions of Apache Spark.
+
+   To confirm if your distribution of Spark 2.4.4 or later has been impacted 
+   by this issue, you can execute the following query:
+
+   SELECT DATE '1581-10-14'
+
+   If the result returned by the connector is 1581-10-24, then you are impacted 
+   by the issue. In this case, if your data set contains date and/or timestamp
+   data earlier than October 15, 1582, you can work around this issue by 
+   adding EnableArrow=0 in your DSN or connection string to disable the Arrow
+   result set serialization feature.  
+
+ * When retrieving data from a BINARY column, a ClassCastException error 
+   occurs.
+
+   In Spark 1.6.3 or earlier, the server sometimes returns a 
+   ClassCastException error when attempting to retrieve data from a BINARY 
+   column.
+
+   This issue is fixed as of Spark 2.0.0.
+
+   For more information, see the JIRA issue posted by Apache named "When
+   column type is binary, select occurs ClassCastException in Beeline" at
+   https://issues.apache.org/jira/browse/SPARK-12143.
+
+
+2.8.1 ------------------------------------------------------------------------
+
+Released 2024-05-31
+  
+Enhancements & New Features
+
+ * [SPARKO-1136] UC Volume ingestion
+
+   The connector now supports UC Volume ingestion operations. To do this, set
+   the StagingAllowedLocalPaths property to the local path. For more 
+   information, see the Installation and Configuration Guide.
+
+ * [SPARKO-1264] Updated third-party libraries
+
+   The connector now uses the following third-party libraries:
+   - Expat 2.6.2 (previously 2.6.0)
+   - libcURL 8.7.1 (previously 8.6.0)
+  
+
+Resolved Issues
+The following issues has been resolved in Simba Apache Spark ODBC Connector 
+2.8.1.
+
+ * [SPARKO-988] When the comments' length is greater than MaxCommentLen, the
+   connector returns an error. 
+
+ * [SPARKO-1275] When using a private signed CA on Windows Truststore, the 
+   connector fails to verify the OIDC endpoint's certificate. 
+ 
+ * [SPARKO-1267] On Windows, when using Kerbeos authentication and KrbRealm is
+   empty, the connection fails.
+
+ * [SPARKO-1262] On Windows, when using SASL authentication and the SASL 
+   plugins folder path exceeds 128 characters, the connector returns a "Failed
+   to initialize SASL client library: generic failure." error message. 
+
+ * [SPARKO-1254] The connector returns an error for SQLCancel.
+
+
+2.8.0 ------------------------------------------------------------------------
+
+Released 2024-03-11
+  
+Enhancements & New Features
+
+ * [SPARKO-1137] Enhanced client credentials
+
+   The connector now supports JWT assertion as the client credentials for 
+   OAuth. For more information, see the Installation and Configuration Guide.
+
+ * [SPARKO-1146] Token renew support
+
+   For token passthrough authentication, you can now renew your token.
+
+ * [SPARKO-1147][SPARKO-1171][SPARKO-1236] Updated third-party libraries
+
+   The connector now uses the following third-party libraries:
+   - Arrow 15.0.0 (previously 9.0.0)(on Windows)
+   - libcURL 8.6.0 (previously 8.4.0)
+   - Zlib 1.3.1 (previously 1.2.13)  
+
+ * [SPARKO-1147] Upgraded compiler support
+
+   The connector now uses Windows Visual Studio 2022. For supported versions,
+   see the Installation and Configuration Guide.
+
+ * [SPARKO-1147] Updated security flags
+
+   The following security flags have been used to improve security
+   checks in the connector:  
+   - /CETCOMPAT
+   - /guard:cf
+   - /Qspectre 
+   - /SDL
+   
+ * [SPARKO-1165] Accept Undetermined Revocation support
+
+   The connector can now access the SSL connection when the certificate's
+   revocation status is undetermined. To do this, select the Accept 
+   Undetermined Revocation checkbox (set the AcceptUndeterminedRevocation
+   property to 1). For more information, see the Installation and 
+   Configuration Guide.
+
+ * [SPARKO-1165] ProxyIgnoreList support
+   
+   The connector can now allow the hosts or domains that do not use proxy. To
+   do this, set the ProxyIgnoreList property to a comma separated hostname. 
+   For more information, see the Installation and Configuration Guide.
+
+ * [SPARKO-1249] OAuth enhancement
+   
+   The connector can now connect to the OIDC endpoint when ProxyUID is unset.
+
+ * [SPARKO-1155] Updated libcURL location
+
+   On Windows, the libcURL DLL and manifest files are now located in the lib 
+   folder.
+
+
+Resolved Issues
+The following issue has been resolved in Simba Apache Spark ODBC Connector 
+2.8.0.
+
+ * [SPARKO-1252] When UseNativeQuery is set to 1 for a cluster later than DBR 
+   11, the connector returns an incorrect column number after SQLPrepare.
+
+
+============================================================================== 

@@ -106,3 +106,5 @@ graph TD
 **Eduardo Francisco da Silva**  
 Lead Data Engineer | Fraud Detection | Data Science Practitioner  
 🇧🇷 + 🇺🇸 | [LinkedIn](https://www.linkedin.com/in/eduefs)
+
+![Secret Scan](https://github.com/YOUR_USERNAME/REPO_NAME/actions/workflows/trufflehog-docker-v4.yml/badge.svg)
