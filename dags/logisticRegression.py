@@ -5,22 +5,16 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from datetime import datetime
 from io import BytesIO
 import os
-import pandas as pd
 import joblib
-from sklearn.model_selection import KFold, cross_val_score, train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.linear_model import LogisticRegression
-import databricks.sql as sql
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import OneHotEncoder, VectorAssembler, StandardScaler
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml import Pipeline
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+from pyspark.sql.functions import create_map, col, lit
+from itertools import chain
 
-def upload_df_to_s3(df, bucket, key, aws_conn_id):
-    s3 = S3Hook(aws_conn_id=aws_conn_id)
-    buffer = BytesIO()
-    df.to_parquet(buffer, index=False, engine='pyarrow')
-    buffer.seek(0)
-    s3.load_file_obj(buffer, key=key, bucket_name=bucket, replace=True)
-    print(f"✅ Uploaded to s3://{bucket}/{key}")
+
 
 def train_and_store_scores():
     # Step 1: Connect to Databricks
@@ -28,107 +22,85 @@ def train_and_store_scores():
     host = conn.host
     token = conn.password
     http_path = conn.extra_dejson.get("http_path")
-    connection = sql.connect(server_hostname=host, http_path=http_path, access_token=token)
+    
+    os.environ["PYSPARK_SUBMIT_ARGS"] = "--jars /opt/spark/jars/databricks-jdbc.jar --driver-class-path /opt/spark/jars/databricks-jdbc.jar pyspark-shell"
+
+    spark = SparkSession.builder \
+    .appName("FraudDetectionModel") \
+    .config("spark.jars", "/opt/spark/jars/databricks-jdbc.jar") \
+    .config("spark.driver.extraClassPath", "/opt/spark/jars/databricks-jdbc.jar") \
+    .config("spark.executor.extraClassPath", "/opt/spark/jars/databricks-jdbc.jar") \
+    .getOrCreate()
+
+
+
 
     # Step 2: Load data from view
-    query = "SELECT * FROM fraud_miner.silver.fraud_geo_view"
-    df = pd.read_sql(query, connection)
+    df = spark.read \
+    .format("jdbc") \
+    .option("driver", "com.simba.spark.jdbc.Driver") \
+    .option("url", f"jdbc:spark://{host}:443/default;transportMode=http;ssl=1;httpPath={http_path};AuthMech=3;UID=token;PWD={token}") \
+    .option("query", "SELECT * FROM fraud_miner.silver.fraud_geo_view") \
+    .load()
+
+
 
     # Step 3: Feature engineering
-    df["geo_matches_merchant"] = (df["geo_country"] == df["Merchant_Country"]).astype(int)
+    df = df.withColumn("geo_matches_merchant", (df.geo_country == df.Merchant_Country).cast("int"))
     target = "Transaction_Fraud"
-    features = [
-        "Transaction_Amount",
-        "Card_Provider",
-        "Merchant_Category",
-        "Merchant_Country",
-        "geo_country",
-        "geo_matches_merchant"
+
+    numeric_cols = ["Transaction_Amount", "geo_matches_merchant"]
+    categorical_cols = ["Card_Provider", "Merchant_Category", "Merchant_Country", "geo_country"]
+
+    for col_name in categorical_cols:
+        distinct_values = df.select(col_name).distinct().rdd.flatMap(lambda x: x).collect()
+        mapping = {val: idx for idx, val in enumerate(sorted(distinct_values))}
+        mapping_expr = create_map([lit(x) for x in chain(*mapping.items())])
+        df = df.withColumn(f"{col_name}_idx", mapping_expr.getItem(col(col_name)).cast("int"))
+
+    encoders = [
+        OneHotEncoder(inputCol=f"{c}_idx", outputCol=f"{c}_vec", handleInvalid="keep")
+        for c in categorical_cols
     ]
-    X = df[features]
-    y = df[target]
 
-    numeric_features = ["Transaction_Amount", "geo_matches_merchant"]
-    categorical_features = list(set(features) - set(numeric_features))
+    assembler = VectorAssembler(inputCols=[f"{c}_vec" for c in categorical_cols] + numeric_cols, outputCol="features_raw")
+    scaler = StandardScaler(inputCol="features_raw", outputCol="features")
+    lr = LogisticRegression(labelCol=target, featuresCol="features")
 
-    numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(handle_unknown="ignore", sparse=False)
+    pipeline = Pipeline(stages=encoders + [assembler, scaler, lr])
+    model = pipeline.fit(df)
 
-    preprocessor = ColumnTransformer([
-        ("num", numeric_transformer, numeric_features),
-        ("cat", categorical_transformer, categorical_features)
-    ])
+    predictions = model.transform(df)
 
-    pipeline = Pipeline([
-        ("preprocessor", preprocessor),
-        ("classifier", LogisticRegression(max_iter=1000))
-    ])
+    evaluator = MulticlassClassificationEvaluator(labelCol=target, predictionCol="prediction", metricName="accuracy")
+    accuracy = evaluator.evaluate(predictions)
+    print(f"✅ Spark model accuracy: {accuracy:.4f}")
 
-    # Step 4: K-Fold validation
-    kf = KFold(n_splits=10, shuffle=True, random_state=42)
-    scores = cross_val_score(pipeline, X, y, cv=kf, scoring='accuracy')
-    results_df = pd.DataFrame({
-        "run_date": [datetime.now()] * len(scores),
-        "fold": list(range(1, len(scores) + 1)),
-        "accuracy": scores
-    })
+    # Save predictions
+    predictions.select(target, "prediction", "probability") \
+        .write.mode("overwrite").saveAsTable("fraud_miner.gold.model_predictions")
 
-    # Step 5: Fit model and save test predictions
-    X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, random_state=42)
-    pipeline.fit(X_train, y_train)
-    y_pred = pipeline.predict(X_test)
-    preds_df = pd.DataFrame({
-        "run_date": [datetime.now()] * len(y_test),
-        "true_label": y_test.tolist(),
-        "predicted_label": y_pred.tolist()
-    })
+    # Save evaluation result
+    from pyspark.sql import Row
+    result_row = Row(run_date=str(datetime.now()), accuracy=float(accuracy))
+    spark.createDataFrame([result_row]) \
+        .write.mode("append").saveAsTable("fraud_miner.gold.model_evaluation")
 
-    # Step 6: Save model locally
+    # Save model
     os.makedirs("/tmp/fraud_models", exist_ok=True)
-    model_path = "/tmp/fraud_models/logreg_model.pkl"
-    joblib.dump(pipeline, model_path)
+    model_path = "/tmp/fraud_models/logreg_model_spark"
+    model.write().overwrite().save(model_path)
 
-    bucket = 'fraud-miner'
-    # Step 7: Save model to S3
     s3 = S3Hook(aws_conn_id="aws_default")
-    with open(model_path, "rb") as f:
-        s3.load_file_obj(f, key="model/logreg_model.pkl", bucket_name=bucket, replace=True)
-        print("✅ Model uploaded to S3")
+    metadata_path = os.path.join(model_path, "metadata")
+    for file in os.listdir(metadata_path):
+        if file.startswith("part-"):
+            with open(os.path.join(metadata_path, file), "rb") as f:
+                s3.load_file_obj(f, key="model/logreg_model_spark_metadata", bucket_name="fraud-miner", replace=True)
+            break
 
-    # Step 8: Save evaluation results to Databricks
-    cursor = connection.cursor()
+    spark.stop()
 
-    cursor.execute("""CREATE SCHEMA IF NOT EXISTS fraud_miner.gold;""")
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fraud_miner.gold.model_evaluation (
-            run_date TIMESTAMP,
-            fold INT,
-            accuracy DOUBLE
-        )
-    """)
-    for _, row in results_df.iterrows():
-        cursor.execute(f"""
-            INSERT INTO fraud_miner.gold.model_evaluation (run_date, fold, accuracy)
-            VALUES ('{row['run_date']}', {int(row['fold'])}, {row['accuracy']})
-        """)
-
-    # Step 9: Save predictions to Databricks
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fraud_miner.gold.model_predictions (
-            run_date TIMESTAMP,
-            true_label INT,
-            predicted_label INT
-        )
-    """)
-    for _, row in preds_df.iterrows():
-        cursor.execute(f"""
-            INSERT INTO fraud_miner.gold.model_predictions (run_date, true_label, predicted_label)
-            VALUES ('{row['run_date']}', {int(row['true_label'])}, {int(row['predicted_label'])})
-        """)
-
-    cursor.close()
-    connection.close()
 
 with DAG(
     dag_id="logistic_fraud_model_with_s3",

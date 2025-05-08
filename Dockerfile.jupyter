@@ -1,7 +1,24 @@
 FROM jupyter/scipy-notebook:latest
 
-COPY requirements.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Add Java (required for Spark)
+USER root
+RUN apt-get update && \
+    apt-get install -y openjdk-11-jdk && \
+    apt-get clean
 
-# Disable token login
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--allow-root", "--NotebookApp.token=''"]
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH=$JAVA_HOME/bin:$PATH
+
+# Install PySpark
+COPY requirements.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && pip install pyspark==3.5.1 findspark
+
+# Optional: Spark env variables
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=jupyter
+ENV PYSPARK_DRIVER_PYTHON_OPTS="lab --ip=0.0.0.0 --no-browser --allow-root --NotebookApp.token=''"
+
+# Launch JupyterLab
+#CMD ["start.sh", "jupyter", "lab"]
+CMD ["start.sh","jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--allow-root", "--NotebookApp.token=''"]
