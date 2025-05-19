@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 import geoip2.database
 import os
+from mylibs.databricks_utils import get_databricks_connection
 
 # Config
 DB_CATALOG = "fraud_miner"
@@ -16,6 +17,7 @@ GEOIP_S3_KEY = "geoip/db/GeoLite2-City.mmdb"
 GEOIP_S3_BUCKET = "fraud-miner"
 LOCAL_GEOIP_PATH = "/tmp/GeoLite2-City.mmdb"
 LOCAL_PARQUET_PATH = "/tmp/enriched_geo.parquet"
+
 
 default_args = {
     'start_date': datetime(2025, 1, 1),
@@ -29,13 +31,7 @@ def enrich_with_geoip():
     s3.get_key(GEOIP_S3_KEY, bucket_name=GEOIP_S3_BUCKET).download_file(LOCAL_GEOIP_PATH)
     print("✅ GeoIP DB downloaded to /tmp")
 
-    # Step 2: Connect to Databricks SQL and fetch data
-    conn = BaseHook.get_connection("fraud_databricks")
-    connection = sql.connect(
-        server_hostname=conn.host,
-        http_path=conn.extra_dejson.get("http_path"),
-        access_token=conn.password
-    )
+    connection = get_databricks_connection()
 
     query = f"SELECT distinct HK_LINK_TRANSACTION, ip_address FROM {SOURCE_VIEW} where ip_address is not null"
     df = pd.read_sql(query, connection)
@@ -93,14 +89,43 @@ def enrich_with_geoip():
     SELECT * FROM PARQUET.`dbfs:/Volumes/fraud_miner/silver/rdv_sat/enriched_geo.parquet`
     """)
 
-    # cursor.execute("""
-    #                DROP TABLE IF EXISTS fraud_miner.silver.rdv_geoip_enriched_txn;""")
+    cursor.execute("""
+                   CREATE OR REPLACE VIEW fraud_miner.silver.fraud_geo_view AS
+                    SELECT
+                    ffv.HK_LINK_TRANSACTION,
+                    date_format(ffv.Transaction_Date , 'yyyy-MM-dd HH:mm:ss') AS Transaction_Date,
+                    CAST(NULLIF(ffv.Transaction_Amount, 0) AS DOUBLE) AS Transaction_Amount,
+                    ffv.Transaction_Currency,
+                    ffv.Transaction_IP,
+                    ffv.Transaction_Fraud,
+                    ffv.Card_Number,
+                    ffv.Card_Expiry_Date,
+                    ffv.Card_Provider,
+                    date_format(ffv.Card_Issued_Date , 'yyyy-MM-dd HH:mm:ss') AS Card_Issued_Date,
+                    date_format(ffv.Card_Last_Update , 'yyyy-MM-dd HH:mm:ss') AS Card_Last_Update,
+                    CAST(NULLIF(ffv.Card_Credit_Limit, 0) AS DOUBLE) AS Card_Credit_Limit,
+                    ffv.Customer_Name,
+                    ffv.Customer_Email,
+                    ffv.Customer_Address,
+                    ffv.Customer_Birth_Date,
+                    date_format(ffv.Customer_Last_Update , 'yyyy-MM-dd HH:mm:ss') AS Customer_Last_Update,
+                    ffv.Merchant_Address,
+                    ffv.Merchant_Category,
+                    ffv.Merchant_City,
+                    ffv.Merchant_Country,
+                    date_format(ffv.Merchant_Created_At , 'yyyy-MM-dd HH:mm:ss') AS Merchant_Created_At,
+                    ffv.Merchant_Name,
+                    COALESCE(rg.geo_city, 'Unknown') AS geo_city,
+                    COALESCE(rg.geo_region, 'Unknown') AS geo_region,
+                    CAST(NULLIF(rg.geo_lat, 0) AS DOUBLE) AS geo_lat,
+                    CAST(NULLIF(rg.geo_lon, 0) AS DOUBLE) AS geo_lon,
+                    COALESCE(rg.geo_country, 'Unknown') AS geo_country
+                    FROM
+                    fraud_miner.silver.fraud_flat_view ffv
+                    INNER JOIN fraud_miner.silver.rdv_geoip rg
+                    ON ffv.HK_LINK_TRANSACTION = rg.HK_LINK_TRANSACTION
+""")
 
-    # cursor.execute (""" CREATE TABLE fraud_miner.silver.rdv_geoip_enriched_txn
-    #                 USING PARQUET
-    #                 OPTIONS ('path' 's3://fraud-miner/silver/enriched_geo.parquet');""")
-    
-    # print(f"✅ Table fraud_miner.silver.rdv_geoip_enriched_txn has been created/replaced successfully")
 
 # DAG definition
 with DAG('geoip_enrichment_fraud_flat_pandas_s3',

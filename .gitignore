@@ -57,3 +57,5 @@ ENV/
 
 # AWS CLI default output
 .aws/
+postgres_old/base/1/112
+/postgres_old

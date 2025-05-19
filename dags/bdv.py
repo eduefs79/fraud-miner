@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 import hashlib
 from io import BytesIO
+from mylibs.databricks_utils import get_databricks_connection
 
 def hash_key(*values):
     concat = '||'.join(str(v) for v in values)
@@ -21,16 +22,8 @@ def upload_df_to_s3(df, bucket, key, aws_conn_id):
     print(f"✅ Uploaded to s3://{bucket}/{key}")
 
 def register_transaction_tables():
-    conn = BaseHook.get_connection("fraud_databricks")
-    host = conn.host
-    token = conn.password
-    http_path = conn.extra_dejson.get("http_path")
 
-    connection = sql.connect(
-        server_hostname=host,
-        http_path=http_path,
-        access_token=token
-    )
+    connection = get_databricks_connection()
     cursor = connection.cursor()
 
     cursor.execute("""

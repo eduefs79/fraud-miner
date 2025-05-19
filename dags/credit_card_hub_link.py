@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 import hashlib
 from io import BytesIO
+from mylibs.databricks_utils import get_databricks_connection
 
 # --------- Helpers ---------
 def hash_key(*values):
@@ -51,16 +52,8 @@ def process_credit_card_to_silver(aws_conn_id):
 
 # --------- Register Volumes & Views ---------
 def register_credit_card_tables():
-    conn = BaseHook.get_connection("fraud_databricks")
-    host = conn.host
-    token = conn.password
-    http_path = conn.extra_dejson.get("http_path")
 
-    connection = sql.connect(
-        server_hostname=host,
-        http_path=http_path,
-        access_token=token
-    )
+    connection = get_databricks_connection()
 
     cursor = connection.cursor()
 

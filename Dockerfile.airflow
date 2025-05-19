@@ -10,18 +10,6 @@ RUN apt-get update && \
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
 
-# --- Install Databricks JDBC Driver ---
-RUN mkdir -p /opt/spark/jars && \
-    curl -L -o /opt/spark/jars/databricks-jdbc.jar https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.32/SimbaSparkJDBC42-2.6.32.1040.jar
-
-ENV SPARK_SUBMIT_OPTIONS="--jars /opt/spark/jars/databricks-jdbc.jar"
-ENV SPARK_CLASSPATH="/opt/spark/jars/*"
-
-# Copy and install Databricks ODBC Driver
-COPY dependencies/databricks-odbc.deb /tmp/databricks-odbc.deb
-RUN dpkg -i /tmp/databricks-odbc.deb
-
-
 USER airflow
 
 # Install PySpark and other Python dependencies
