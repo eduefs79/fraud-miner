@@ -13,6 +13,13 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 import shutil
 from pyspark.sql.types import *
 from pyspark.sql.functions import col, when
+from mylibs.utilities import is_numeric_udf
+from airflow.models import Variable
+
+PYTHON_PATH = Variable.get("PYSPARK_PYTHON", "/usr/bin/python3.8")
+os.environ["PYSPARK_PYTHON"] = PYTHON_PATH
+os.environ["PYSPARK_DRIVER_PYTHON"] = PYTHON_PATH
+
 
 
 def save_to_s3(local_path: str, s3_key: str, bucket_name: str = "fraud-miner", aws_conn_id: str = "aws_s3_conn_fraud"):
@@ -37,6 +44,8 @@ def train_with_spark():
         .config("spark.jars", "/opt/spark/jars/databricks-jdbc.jar") \
         .config("spark.driver.extraClassPath", "/opt/spark/jars/databricks-jdbc.jar") \
         .config("spark.executor.extraClassPath", "/opt/spark/jars/databricks-jdbc.jar") \
+        .config("spark.executorEnv.PYSPARK_PYTHON", "/usr/bin/python3.8") \
+        .config("spark.pyspark.python", "/usr/bin/python3.8") \
         .getOrCreate()
 
     jdbc_url = (
@@ -49,97 +58,57 @@ def train_with_spark():
             f";PWD={token}"
         )
 
-    # customSchema = StructType([
-    #         StructField("HK_LINK_TRANSACTION", StringType(), True),
-    #         StructField("Transaction_Date", StringType(), True),
-    #         StructField("Transaction_Amount", StringType(), True),
-    #         StructField("Transaction_Currency", StringType(), True),
-    #         StructField("Transaction_IP", StringType(), True),
-    #         StructField("Transaction_Fraud", LongType(), True),
-    #         StructField("Card_Number", StringType(), True),
-    #         StructField("Card_Expiry_Date", StringType(), True),
-    #         StructField("Card_Provider", StringType(), True),
-    #         StructField("Card_Issued_Date", StringType(), True),
-    #         StructField("Card_Last_Update", StringType(), True),
-    #         StructField("Card_Credit_Limit", StringType(), True),
-    #         StructField("Customer_Name", StringType(), True),
-    #         StructField("Customer_Email", StringType(), True),
-    #         StructField("Customer_Address", StringType(), True),
-    #         StructField("Customer_Birth_Date", StringType(), True),
-    #         StructField("Customer_Last_Update", StringType(), True),
-    #         StructField("Merchant_Address", StringType(), True),
-    #         StructField("Merchant_Category", StringType(), True),
-    #         StructField("Merchant_City", StringType(), True),
-    #         StructField("Merchant_Country", StringType(), True),
-    #         StructField("Merchant_Created_At", StringType(), True),
-    #         StructField("Merchant_Name", StringType(), True),
-    #         StructField("geo_city", StringType(), True),
-    #         StructField("geo_region", StringType(), True),
-    #         # StructField("geo_lat", DoubleType(), True),
-    #         # StructField("geo_lon", DoubleType(), True),
-    #         StructField("geo_country", StringType(), True),
-    #     ])
-
-    query = """
-          SELECT 
-          CAST(HK_LINK_TRANSACTION AS STRING) AS HK_LINK_TRANSACTION,
-          CAST(Transaction_Date AS STRING) AS Transaction_Date,
-          CAST(Transaction_Amount AS STRING) AS Transaction_Amount,
-          CAST(Transaction_Currency AS STRING) AS Transaction_Currency,
-          CAST(Transaction_IP AS STRING) AS Transaction_IP,
-          CAST(Transaction_Fraud AS STRING) AS Transaction_Fraud,
-          CAST(Card_Number AS STRING) AS Card_Number,
-          CAST(Card_Expiry_Date AS STRING) AS Card_Expiry_Date,
-          CAST(Card_Provider AS STRING) AS Card_Provider,
-          CAST(Card_Issued_Date AS STRING) AS Card_Issued_Date,
-          CAST(Card_Last_Update AS STRING) AS Card_Last_Update,
-          CAST(Card_Credit_Limit AS STRING) AS Card_Credit_Limit,
-          CAST(Customer_Name AS STRING) AS Customer_Name,
-          CAST(Customer_Email AS STRING) AS Customer_Email,
-          CAST(Customer_Address AS STRING) AS Customer_Address,
-          CAST(Customer_Birth_Date AS STRING) AS Customer_Birth_Date,
-          CAST(Customer_Last_Update AS STRING) AS Customer_Last_Update,
-          CAST(Merchant_Address AS STRING) AS Merchant_Address,
-          CAST(Merchant_Category AS STRING) AS Merchant_Category,
-          CAST(Merchant_City AS STRING) AS Merchant_City,
-          CAST(Merchant_Country AS STRING) AS Merchant_Country,
-          CAST(Merchant_Created_At AS STRING) AS Merchant_Created_At,
-          CAST(Merchant_Name AS STRING) AS Merchant_Name,
-          CAST(geo_city AS STRING) AS geo_city,
-          CAST(geo_region AS STRING) AS geo_region,
-          CAST(geo_country AS STRING) AS geo_country
-          FROM fraud_miner.silver.fraud_geo_view"""
     
     df = spark.read \
         .format("jdbc") \
         .option("url", jdbc_url) \
-        .option("query", query) \
+        .option("dbtable", "fraud_miner.silver.fraud_geo_table") \
         .option("driver", "com.databricks.client.jdbc.Driver") \
+        .option("fetchsize", "1000") \
         .load()
 
-    df = df.withColumn("Transaction_Amount", col("Transaction_Amount").cast("double"))
-    df = df.withColumn("Card_Credit_Limit", col("Card_Credit_Limit").cast("double"))
-    df = df.withColumn("Transaction_Fraud", col("Transaction_Fraud").cast("int"))
+    print("Record count" ,df.count())
 
+    df.select("Transaction_Amount").distinct().filter(~col("Transaction_Amount").rlike("^[0-9.]+$")).show()
 
-    # Feature Engineering
-    df = df.withColumn("geo_matches_merchant", (df["geo_country"] == df["Merchant_Country"]).cast("int"))
+    df.printSchema()
+
+    df = df.withColumn("Transaction_Amount", is_numeric_udf(col("Transaction_Amount")))
+    df = df.withColumn("Card_Credit_Limit", is_numeric_udf(col("Card_Credit_Limit")))
+
 
     df = df.fillna({
                 "Transaction_Amount": 0.0,
-                "geo_matches_merchant": 0
+                "geo_country":"Unknown",
+                "Merchant_Country":"Unknown",
+                "Transaction_Fraud": 0,
+                "Card_Provider":"Unknown",
+                "Card_Credit_Limit":0
             })
 
-    categorical_cols = ["Card_Provider", "Merchant_Category", "Merchant_Country", "geo_country"]
-    numeric_cols = ["Transaction_Amount", "geo_matches_merchant"]
+    df = df.filter(
+                col("Transaction_Amount").isNotNull() &
+                col("Card_Credit_Limit").isNotNull() &
+                col("Transaction_Fraud").isNotNull()
+            )
+
+    
+
+    print("Record count after filtering" ,df.count())
+
+    #Feature Engineering
+    df = df.withColumn("geo_matches_merchant", (df["geo_country"] == df["Merchant_Country"]).cast("int"))
+
+    categorical_cols = ["Card_Provider", "Merchant_Country", "geo_country"]
+    numeric_cols = ["Transaction_Amount", "geo_matches_merchant","Card_Credit_Limit"]
 
     indexers = [StringIndexer(inputCol=col, outputCol=f"{col}_idx", handleInvalid="keep") for col in categorical_cols]
     encoders = [OneHotEncoder(inputCol=f"{col}_idx", outputCol=f"{col}_vec") for col in categorical_cols]
-    df = df.filter(df["Transaction_Fraud"].isNotNull())
+
     assembler = VectorAssembler(
         inputCols=[f"{col}_vec" for col in categorical_cols] + numeric_cols,
         outputCol="features",
-        handleInvalid="skip"  # <--- ADD THIS LINE
+        handleInvalid="skip" 
     )
 
     lr = LogisticRegression(labelCol="Transaction_Fraud", featuresCol="features", maxIter=100)

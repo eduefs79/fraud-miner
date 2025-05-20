@@ -1,12 +1,34 @@
-FROM bitnami/spark:3.5.1
+FROM bitnami/spark:latest
 
 USER root
 
-RUN apt-get update && apt-get install -y python3 python3-pip openjdk-17-jdk && apt-get clean
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y make build-essential libssl-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+    libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV PATH=$JAVA_HOME/bin:$PATH
+# Install pyenv and Python 3.8
+ENV PYENV_ROOT="/root/.pyenv"
+ENV PATH="$PYENV_ROOT/bin:$PATH"
 
-#RUN pip3 install pyspark==3.5.1
+RUN curl https://pyenv.run | bash && \
+    /root/.pyenv/bin/pyenv install 3.8.18 && \
+    /root/.pyenv/bin/pyenv global 3.8.18
 
-USER 1001
+# Move the full Python install somewhere world-accessible
+RUN cp -r /root/.pyenv/versions/3.8.18 /opt/python3.8 && \
+    chmod -R a+rx /opt/python3.8 && \
+    ln -s /opt/python3.8/bin/python /usr/local/bin/python3.8 && \
+    echo "/opt/python3.8/lib" > /etc/ld.so.conf.d/python38.conf && \
+    ldconfig
+
+
+# ✅ Optional: fix all permissions (safe fallback)
+RUN chmod -R a+rx /root/.pyenv/versions/3.8.18/
+
+# ✅ Optional: verify
+RUN python3.8 --version
+
+RUN rm -rf /root/.pyenv
+
