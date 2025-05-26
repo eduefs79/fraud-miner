@@ -19,33 +19,34 @@ Design and implement a production-ready ML pipeline for credit card fraud detect
 
 ```mermaid
 graph TD
-    subgraph Bronze Layer
-      A1[Raw CSV files] --> A2[Airflow DAG: generate_fake_data.py]
-      A2 --> A3[S3: bronze/fraud_raw/...]
-    end
+  subgraph "Bronze Layer"
+    A1["Raw CSV files"] --> A2["Airflow DAG: generate_fake_data.py"]
+    A2 --> A3["S3: bronze/fraud_raw/..."]
+  end
 
-    subgraph Silver Layer
-      A3 --> B1[Airflow DAGs: customer_hub_link.py, merchant_hub_link.py, etc.]
-      B1 --> B2[Delta tables in fraud_miner.silver.*]
-      B2 --> B3[GeoIP enrichment (GeoIP.py)]
-    end
+  subgraph "Silver Layer"
+    A3 --> B1["Airflow DAGs: customer_hub_link.py, merchant_hub_link.py, etc."]
+    B1 --> B2["Delta tables in fraud_miner.silver.*"]
+    B2 --> B3["GeoIP enrichment via GeoIP.py"]
+  end
 
-    subgraph Business Data Vault / Feature Layer
-      B3 --> C1[fraud_geo_view (JOINed View)]
-    end
+  subgraph "Business Data Vault / Feature Layer"
+    B3 --> C1["fraud_geo_view (joined view)"]
+  end
 
-    subgraph ML Modeling
-      C1 --> D1[Feature Engineering]
-      D1 --> D2[Train/Test Split]
-      D2 --> D3[Logistic Regression + Cross Validation]
-      D3 --> D4[Save predictions & scores to fraud_miner.gold.*]
-      D3 --> D5[Save model.pkl to S3]
-    end
+  subgraph "ML Modeling"
+    C1 --> D1["Feature Engineering"]
+    D1 --> D2["Train/Test Split"]
+    D2 --> D3["Logistic Regression + Cross Validation"]
+    D3 --> D4["Save predictions & scores to fraud_miner.gold.*"]
+    D3 --> D5["Save model.pkl to S3"]
+  end
 
-    subgraph Job Deployment
-      D5 --> E1[Databricks Job]
-      E1 --> E2[Airflow DAG: deploy_fraud_model.py]
-    end
+  subgraph "Job Deployment"
+    D5 --> E1["Databricks Job"]
+    E1 --> E2["Airflow DAG: deploy_fraud_model.py"]
+  end
+
 ```
 
 ---
