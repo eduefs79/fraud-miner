@@ -89,42 +89,7 @@ def enrich_with_geoip():
     SELECT * FROM PARQUET.`dbfs:/Volumes/fraud_miner/silver/rdv_sat/enriched_geo.parquet`
     """)
 
-    cursor.execute("""
-                   CREATE OR REPLACE VIEW fraud_miner.silver.fraud_geo_view AS
-                    SELECT
-                    ffv.HK_LINK_TRANSACTION,
-                    date_format(ffv.Transaction_Date , 'yyyy-MM-dd HH:mm:ss') AS Transaction_Date,
-                    CAST(NULLIF(ffv.Transaction_Amount, 0) AS DOUBLE) AS Transaction_Amount,
-                    ffv.Transaction_Currency,
-                    ffv.Transaction_IP,
-                    ffv.Transaction_Fraud,
-                    ffv.Card_Number,
-                    ffv.Card_Expiry_Date,
-                    ffv.Card_Provider,
-                    date_format(ffv.Card_Issued_Date , 'yyyy-MM-dd HH:mm:ss') AS Card_Issued_Date,
-                    date_format(ffv.Card_Last_Update , 'yyyy-MM-dd HH:mm:ss') AS Card_Last_Update,
-                    CAST(NULLIF(ffv.Card_Credit_Limit, 0) AS DOUBLE) AS Card_Credit_Limit,
-                    ffv.Customer_Name,
-                    ffv.Customer_Email,
-                    ffv.Customer_Address,
-                    ffv.Customer_Birth_Date,
-                    date_format(ffv.Customer_Last_Update , 'yyyy-MM-dd HH:mm:ss') AS Customer_Last_Update,
-                    ffv.Merchant_Address,
-                    ffv.Merchant_Category,
-                    ffv.Merchant_City,
-                    ffv.Merchant_Country,
-                    date_format(ffv.Merchant_Created_At , 'yyyy-MM-dd HH:mm:ss') AS Merchant_Created_At,
-                    ffv.Merchant_Name,
-                    COALESCE(rg.geo_city, 'Unknown') AS geo_city,
-                    COALESCE(rg.geo_region, 'Unknown') AS geo_region,
-                    CAST(NULLIF(rg.geo_lat, 0) AS DOUBLE) AS geo_lat,
-                    CAST(NULLIF(rg.geo_lon, 0) AS DOUBLE) AS geo_lon,
-                    COALESCE(rg.geo_country, 'Unknown') AS geo_country
-                    FROM
-                    fraud_miner.silver.fraud_flat_view ffv
-                    INNER JOIN fraud_miner.silver.rdv_geoip rg
-                    ON ffv.HK_LINK_TRANSACTION = rg.HK_LINK_TRANSACTION
-""")
+
 
 
 # DAG definition

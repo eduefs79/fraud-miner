@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    Fraud_Model:
+      name: Fraud_model
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: CreditCard_test
+          description: Run fraud detection logistic regression job
+          spark_python_task:
+            python_file: "dbfs:/fraud-miner/fraud_logreg_job.py"
+          existing_cluster_id: "0521-165929-f2utrtse"
+          timeout_seconds: 3600
+          libraries: []
+      email_notifications:
+        on_failure:
+          - edu.efs79@gmail.com
+      queue:
+        enabled: true

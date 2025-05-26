@@ -86,7 +86,7 @@ def generate_credit_cards_to_s3(aws_conn_id):
                 'cvv': fake.credit_card_security_code(),
                 'issued_date': issued_date,
                 'last_update': min(last_update, datetime.today().date()),
-                'credit_limit': round(random.uniform(500, 10000), 2)
+                'credit_limit': float(round(random.uniform(500, 10000), 2))                
             })
 
     df_cards = pd.DataFrame(cards)
@@ -122,11 +122,11 @@ def generate_transactions_to_s3(start_date_str, end_date_str, n_transactions, aw
             'card_id': card['card_id'],
             'customer_id': card['customer_id'],
             'merchant_id': merchant_id,
-            'amount': round(random.uniform(1.00, 1000.00), 2),
+            'amount': float(round(random.uniform(1.00, 1000.00), 2)),
             'currency': 'USD',
             'timestamp': transaction_date,
             'ip_address': fake.ipv4_public(),
-            'is_fraud': np.random.choice([0, 1], p=[0.985, 0.015])
+            'is_fraud': int(np.random.choice([0, 1], p=[0.985, 0.015]))
         })
 
     for date_str, records in transactions_by_day.items():

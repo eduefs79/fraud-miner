@@ -59,3 +59,4 @@ ENV/
 .aws/
 postgres_old/base/1/112
 /postgres_old
+/data_old

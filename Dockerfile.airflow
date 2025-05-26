@@ -7,6 +7,10 @@ RUN apt-get update && \
     apt-get install -y openjdk-17-jdk unzip libodbc1 unixodbc curl libsasl2-modules-gssapi-mit && \
     apt-get clean
 
+RUN mkdir -p /shared && chmod -R 777 /shared
+
+
+
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
 ENV PYSPARK_PYTHON=/usr/local/bin/python

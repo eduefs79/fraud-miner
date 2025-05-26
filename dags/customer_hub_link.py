@@ -12,21 +12,7 @@ from databricks import sql
 from mylibs.databricks_utils import get_databricks_connection
 
 def register_customer_tables():
-    # conn = BaseHook.get_connection("fraud_databricks")
-    # host = conn.host
-    # token = conn.password
-    # http_path = conn.extra_dejson.get("http_path")
 
-    # print("🔍 Connecting to Databricks with:")
-    # print(f"Host: {host}")
-    # print(f"Token exists: {bool(token)}")
-    # print(f"HTTP Path: {http_path}")
-
-    # connection = sql.connect(
-    #     server_hostname=host,
-    #     http_path=http_path,
-    #     access_token=token
-    # )
     connection = get_databricks_connection()
 
     cursor = connection.cursor()

@@ -12,9 +12,10 @@ from pyspark.ml import Pipeline
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 import shutil
 from pyspark.sql.types import *
-from pyspark.sql.functions import col, when
+from pyspark.sql.functions import col, when,regexp_replace
 from mylibs.utilities import is_numeric_udf
 from airflow.models import Variable
+
 
 PYTHON_PATH = Variable.get("PYSPARK_PYTHON", "/usr/bin/python3.8")
 os.environ["PYSPARK_PYTHON"] = PYTHON_PATH
@@ -46,7 +47,8 @@ def train_with_spark():
         .config("spark.executor.extraClassPath", "/opt/spark/jars/databricks-jdbc.jar") \
         .config("spark.executorEnv.PYSPARK_PYTHON", "/usr/bin/python3.8") \
         .config("spark.pyspark.python", "/usr/bin/python3.8") \
-        .getOrCreate()
+        .config("spark.local.dir", "/shared/tmp") \
+         .getOrCreate()
 
     jdbc_url = (
             f"jdbc:databricks://{host}:443/default"
@@ -64,18 +66,53 @@ def train_with_spark():
         .option("url", jdbc_url) \
         .option("dbtable", "fraud_miner.silver.fraud_geo_table") \
         .option("driver", "com.databricks.client.jdbc.Driver") \
-        .option("fetchsize", "1000") \
+        .option("customSchema", "Transaction_Amount STRING, Card_Credit_Limit STRING, Transaction_Fraud STRING") \
         .load()
 
-    print("Record count" ,df.count())
 
-    df.select("Transaction_Amount").distinct().filter(~col("Transaction_Amount").rlike("^[0-9.]+$")).show()
+    output_path = "/shared/output/fraud_stage_cleaned.parquet"
+
+    # Check if the directory exists, and create it if it doesn't
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+        print(f"Directory '{output_path}' created successfully.")
+    else:
+        print(f"Directory '{output_path}' already exists.")
+
+
+    import shutil
+    # 💣 Clean up any corrupted leftovers
+    try:
+        shutil.rmtree(output_path)
+    except Exception as e:
+        print(f"⚠️ Could not remove output path: {e}")
+
+    try:
+        df.write.mode("overwrite").parquet(output_path)
+    except Exception as e:
+        print(f"❌ Spark failed to write Parquet: {e}")
+        raise
+
+    df = spark.read.parquet(output_path)
 
     df.printSchema()
 
-    df = df.withColumn("Transaction_Amount", is_numeric_udf(col("Transaction_Amount")))
-    df = df.withColumn("Card_Credit_Limit", is_numeric_udf(col("Card_Credit_Limit")))
-
+   
+    # Clean numerical fields
+    def clean_and_cast_numeric(colname):
+        return when(
+            regexp_replace(col(colname), "[^0-9.]", "") == "", None
+        ).otherwise(
+            regexp_replace(col(colname), "[^0-9.]", "").cast("double")
+        )
+    
+    df = df.withColumn("Transaction_Amount", clean_and_cast_numeric("Transaction_Amount"))
+    df = df.withColumn("Card_Credit_Limit", clean_and_cast_numeric("Card_Credit_Limit"))
+    df = df.withColumn("geo_lat", clean_and_cast_numeric("geo_lat"))
+    df = df.withColumn("geo_lon", clean_and_cast_numeric("geo_lon"))
+    
+    # Clean Transaction_Fraud
+    df = df.withColumn("Transaction_Fraud", when(col("Transaction_Fraud").isin("0", "1"), col("Transaction_Fraud").cast("int")).otherwise(None))
 
     df = df.fillna({
                 "Transaction_Amount": 0.0,
@@ -98,27 +135,31 @@ def train_with_spark():
 
     #Feature Engineering
     df = df.withColumn("geo_matches_merchant", (df["geo_country"] == df["Merchant_Country"]).cast("int"))
+    print("Feature geo_matches_merchant has been created")
 
     categorical_cols = ["Card_Provider", "Merchant_Country", "geo_country"]
     numeric_cols = ["Transaction_Amount", "geo_matches_merchant","Card_Credit_Limit"]
 
+    print ("Starting indexer")
     indexers = [StringIndexer(inputCol=col, outputCol=f"{col}_idx", handleInvalid="keep") for col in categorical_cols]
+    print ("Starting encoders")
     encoders = [OneHotEncoder(inputCol=f"{col}_idx", outputCol=f"{col}_vec") for col in categorical_cols]
-
+    print ("Starting assembler")
     assembler = VectorAssembler(
         inputCols=[f"{col}_vec" for col in categorical_cols] + numeric_cols,
         outputCol="features",
         handleInvalid="skip" 
     )
-
+    print ("Training model")
     lr = LogisticRegression(labelCol="Transaction_Fraud", featuresCol="features", maxIter=100)
-
+    print ("Pipeline")
     pipeline = Pipeline(stages=indexers + encoders + [assembler, lr])
     df_repartitioned = df.repartition(5)
     model = pipeline.fit(df_repartitioned)
 
-
+    print ("Predictions")
     predictions = model.transform(df)
+    print ("accuracy")
     accuracy = predictions.filter(predictions.prediction == predictions.Transaction_Fraud).count() / predictions.count()
 
     print(f"✅ PySpark Logistic Regression Accuracy: {accuracy:.4f}")
