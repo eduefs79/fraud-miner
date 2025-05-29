@@ -1,16 +1,20 @@
-
 name: Secret Scan with TruffleHog (Docker v4)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "*" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "*" ]
+  workflow_dispatch:
 
 jobs:
   trufflehog-docker:
     name: Docker-based TruffleHog v4 Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout code
@@ -18,7 +22,8 @@ jobs:
 
       - name: Run TruffleHog v4 in Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:latest   git file:///repo  --only-verified --json > trufflehog_report.json
+          docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:latest \
+            git file:///repo --only-verified --json > trufflehog_report.json
 
       - name: Upload Report
         uses: actions/upload-artifact@v4
@@ -26,9 +31,53 @@ jobs:
           name: trufflehog_docker_report
           path: trufflehog_report.json
 
-      - name: Fail on secret match
+      - name: Parse and summarize report
+        id: parse
+        run: |
+          summary=$(jq -r 'map(select(.Verified == true)) | map("* " + .SourceMetadata.Data + " (" + .Raw + ")") | join("\n")' trufflehog_report.json)
+          if [ -z "$summary" ]; then
+            echo "No verified secrets found."
+            echo "comment=✅ No verified secrets found." >> $GITHUB_OUTPUT
+          else
+            echo "Verified secrets found:"
+            echo "$summary"
+            echo "comment=🚨 Verified secrets found:\n$summary" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = `${{ steps.parse.outputs.comment }}`;
+            if (body && body.includes("🚨")) {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Create GitHub Issue if secrets found
+        if: steps.parse.outputs.comment != '✅ No verified secrets found.'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = `${{ steps.parse.outputs.comment }}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🔐 Secret(s) Detected by TruffleHog",
+              body: body,
+              labels: ["security", "trufflehog"]
+            });
+
+      - name: Fail on verified secrets
         run: |
           if grep -q '"Verified": true' trufflehog_report.json; then
-            echo "❌ Secret detected! Failing build."
+            echo "❌ Verified secret(s) detected. Failing job."
             exit 1
           fi
